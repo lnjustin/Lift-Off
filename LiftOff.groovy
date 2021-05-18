@@ -1,6 +1,6 @@
 /**
- *  Space-X
- *
+ *  Lift Off
+ *  Space-X Launch Schedule Integration
  *  Copyright 2021 Justin Leonard
  *
  *  Licensed Virtual the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -24,7 +24,7 @@ import groovy.time.TimeCategory
 
 metadata
 {
-    definition(name: "Space-X", namespace: "lnjustin", author: "lnjustin", importUrl: "")
+    definition(name: "Lift Off", namespace: "lnjustin", author: "lnjustin", importUrl: "")
     {
         capability "Configuration"
         capability "Refresh"        
