@@ -14,7 +14,8 @@
  *
  *  Change History:
  *
- *  V1.0 - Initial Beta
+ *  V1.0.0 - Initial Beta
+ *  V1.0.1 - Added location and rocket info; Fixed tile scaling
  */
 
 import java.text.SimpleDateFormat
