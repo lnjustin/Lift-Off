@@ -14,8 +14,7 @@
  *
  *  Change History:
  *
- *    Date        Who            What
- *    ----        ---            ----
+ *  V1.0 - Initial Beta
  */
 
 import java.text.SimpleDateFormat
@@ -137,19 +136,20 @@ def getSwitchValue()  {
 }
 
 def getTile(launch) {
-    def tile = "<div style='overflow:auto;height:90%'></div>"
+    def tile = "<div style='overflow:auto;'>"
     def colorStyle = ""
-    if (textColor != "#000000") colorStyle = "color:" + textColor
+    if (textColor != "#000000") colorStyle = "color: $textColor"
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
-            tile = "<div style='overflow:auto;height:90%;${colorStyle}'><table width='100%'>"
-            tile += "<tr><td width='100%' align=center><img src='${launch.patch}' width='80%'></td>"
-            if (showName) tile += "<tr><td width='100%' align=center colspan=3>${launch.name}</td></tr>"
-            tile += "<tr><td width='100%' align=center colspan=3>${launch.timeStr}</td></tr>"
-            if (showRocket) tile += "<tr><td width='100%' align=center colspan=3>${launch.rocket}</td></tr>"
-            if (showLocality) tile += "<tr><td width='100%' align=center colspan=3>${launch.locality}</td></tr>"
-            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.status}</td></tr>"
-            tile += "</table></div>"  
+            tile = "<div style='text-align:center;padding:0px;height:75%;${colorStyle};'>"        
+            tile += "<img src='${launch.patch}' style='width:75%; top:0px;' ></div>"         
+            tile += "<div style='text-align:center;padding-top:-10%'>"
+            if (showName) tile += "<p>${launch.name}</p>"    
+            tile += "<p>${launch.timeStr}</p>"               
+            if (showRocket) tile += "<p>${launch.rocket}</p>" 
+            if (showLocality) tile += "<p>${launch.locality}</p>"
+            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<p>${launch.status}</p>" 
+            tile += "</div>"  
         }
     }
     // If no launch to display, display nothing (keep dashboard clean)
@@ -323,7 +323,7 @@ def httpGetExec(suffix)
         { resp ->
             if (resp.data)
             {
-                logDebug("resp.data = ${resp.data}")
+              //  logDebug("resp.data = ${resp.data}")
                 return resp.data
             }
         }
