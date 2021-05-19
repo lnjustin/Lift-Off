@@ -143,11 +143,11 @@ def getTile(launch) {
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
             tile = "<div style='overflow:auto;height:90%;${colorStyle}'><table width='100%'>"
-            tile += "<tr><td width='100%' align=center><img src='${launch.patch}' width='100%'></td>"
-            if (showName) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.name}</td></tr>"
-            tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.timeStr}</td></tr>"
-            if (showRocket) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.rocket}</td></tr>"
-            if (showLocality) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.locality}</td></tr>"
+            tile += "<tr><td width='100%' align=center><img src='${launch.patch}' width='80%'></td>"
+            if (showName) tile += "<tr><td width='100%' align=center colspan=3>${launch.name}</td></tr>"
+            tile += "<tr><td width='100%' align=center colspan=3>${launch.timeStr}</td></tr>"
+            if (showRocket) tile += "<tr><td width='100%' align=center colspan=3>${launch.rocket}</td></tr>"
+            if (showLocality) tile += "<tr><td width='100%' align=center colspan=3>${launch.locality}</td></tr>"
             if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.status}</td></tr>"
             tile += "</table></div>"  
         }
