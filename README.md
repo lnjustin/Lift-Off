@@ -11,7 +11,7 @@ Follow, and automate based on, the Space-X launch schedule.
 
 ![image](https://user-images.githubusercontent.com/12822477/118740464-f0e27c00-b819-11eb-8ec3-85129370f4dd.png)
 
-##Manual Install Instructions##
+#Manual Install Instructions#
 1. Install Lift Off Driver
 2. Add Lift Off Device
 
