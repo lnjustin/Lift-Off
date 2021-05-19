@@ -1,0 +1,16 @@
+{
+  "packageName": "Lift Off",
+  "author": "Justin Leonard",
+  "version": "1.0",
+  "minimumHEVersion": "1.0",
+  "dateReleased": "2021-05-18",
+  "drivers": [
+    {
+      "id": "6dfdf6da-8ae6-4b3b-b80f-63e6d201eee7",
+      "name": "Lift Off",
+      "namespace": "lnjustin",
+      "location": "https://raw.githubusercontent.com/lnjustin/Lift-Off/main/LiftOff.groovy",
+      "required": true
+    }
+  ]
+}
