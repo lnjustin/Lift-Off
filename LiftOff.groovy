@@ -36,8 +36,10 @@ metadata
         attribute "time", "string"
         attribute "timeStr", "string"
         attribute "name", "string"
+        attribute "location", "string"
+        attribute "rocket", "string"
         attribute "description", "string"
-        attribute "status", "string"     
+        attribute "status", "string"    
     }
 }
 
@@ -50,6 +52,7 @@ preferences
         input name: "refreshInterval", type: "number", title: "Refresh Interval (In Minutes)", defaultValue: 120
         input name: "showName", type: "bool", title: "Show Launch Name on Tile?", defaultValue: false
         input name: "showLocality", type: "bool", title: "Show Launch Location on Tile?", defaultValue: false
+        input name: "showRocket", type: "bool", title: "Show Rocket Name on Tile?", defaultValue: false
         input name: "textColor", type: "text", title: "Tile Text Color (Hex)", defaultValue: "#000000"
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
     }
@@ -96,6 +99,7 @@ def updateDevice(data) {
     sendEvent(name: "timeStr", value: data.launch != null ? data.launch.timeStr : "No Launch Data")
     sendEvent(name: "name", value: data.launch != null ? data.launch.name : "No Launch Data")
     sendEvent(name: "location", value: data.launch != null ? data.launch.locality : "No Launch Data")
+    sendEvent(name: "rocket", value: data.launch != null ? data.launch.rocket : "No Launch Data")
     def description = ""
     if (data.launch == null) description = "No Launch Data"
     else if (data.launch.description == null) description = "No Description Available"
@@ -142,6 +146,7 @@ def getTile(launch) {
             tile += "<tr><td width='100%' align=center><img src='${launch.patch}' width='100%'></td>"
             if (showName) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.name}</td></tr>"
             tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.timeStr}</td></tr>"
+            if (showRocket) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.rocket}</td></tr>"
             if (showLocality) tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.locality}</td></tr>"
             if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<tr style='padding-bottom: 0em'><td width='100%' align=center colspan=3>${launch.status}</td></tr>"
             tile += "</table></div>"  
@@ -185,24 +190,33 @@ def setLatestLaunch() {
     def latest = httpGetExec("launches/latest")
     def unixTimestamp = (latest.date_unix as Long) * 1000
     def launchTime = new Date(unixTimestamp)
-    def status = latest.success == "true" ? "Success" : "Failure"
+    def status = latest.success == true ? "Success" : "Failure"   
+    def locality = getLocality(latest)    
+    def rocketName = getRocketName(latest)
     
-    def launchPadID = latest.launchpad
-    def launchPad = httpGetExec("launchpads/" + launchPadID)
-    def locality = launchPad?.locality
-    
-    state.latestLaunch = [time: launchTime.getTime() , timeStr: getTimeStr(launchTime),  name: latest.name, description: latest.details, locality: locality, patch: latest.links.patch.large, status: status]
+    state.latestLaunch = [time: launchTime.getTime() , timeStr: getTimeStr(launchTime),  name: latest.name, description: latest.details, locality: locality, rocket: rocketName, patch: latest.links.patch.large, status: status]
 }
 
 def setNextLaunch() {
     def next = httpGetExec("launches/next")
     def unixTimestamp = (next.date_unix as Long) * 1000
-    def launchTime = new Date(unixTimestamp)
+    def launchTime = new Date(unixTimestamp)    
+    def locality = getLocality(next)    
+    def rocketName = getRocketName(next)
     
-    def launchPadID = next.launchpad
+    state.nextLaunch = [time: launchTime.getTime(), timeStr: getTimeStr(launchTime),  name: next.name, description: next.details, locality: locality, rocket: rocketName, patch: next.links.patch.large, status: "Scheduled"]    
+}
+
+def getLocality(launch) {
+    def launchPadID = launch.launchpad
     def launchPad = httpGetExec("launchpads/" + launchPadID)
-    def locality = launchPad?.locality
-    state.nextLaunch = [time: launchTime.getTime(), timeStr: getTimeStr(launchTime),  name: next.name, description: next.details, locality: locality, patch: next.links.patch.large, status: "Scheduled"]    
+    return launchPad?.locality    
+}
+
+def getRocketName(launch) {
+    def rocketID = launch.rocket
+    def rocket = httpGetExec("rockets/" + rocketID)
+    return rocket?.name    
 }
 
 def getLaunchToDisplay() {
