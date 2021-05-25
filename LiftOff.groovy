@@ -13,9 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *  Change History:
- *
- *  V1.0.0 - Initial Beta
- *  V1.0.1 - Added location and rocket info; Fixed tile scaling
+ *  v1.1.0  Full feature Beta
  */
 
 import java.text.SimpleDateFormat
@@ -52,7 +50,8 @@ preferences
         input name: "refreshInterval", type: "number", title: "Refresh Interval (In Minutes)", defaultValue: 120
         input name: "showName", type: "bool", title: "Show Launch Name on Tile?", defaultValue: false
         input name: "showLocality", type: "bool", title: "Show Launch Location on Tile?", defaultValue: false
-        input name: "showRocket", type: "bool", title: "Show Rocket Name on Tile?", defaultValue: false
+      //  input name: "showRocket", type: "bool", title: "Show Rocket Name on Tile?", defaultValue: false
+        input name: "dashboardType", type: "enum", options: ["Native Hubitat", "Sharptools"], title: "Dashboard Type for Which to Configure Tile", defaultValue: "Native Hubitat"
         input name: "textColor", type: "text", title: "Tile Text Color (Hex)", defaultValue: "#000000"
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
     }
@@ -66,10 +65,15 @@ def logDebug(msg)
     }
 }
 
+def getDashboardType() {
+    return (dashboardType != null) ? dashboardType : "Native Hubitat"
+}
+
 
 def configure()
 {
     state.clear()
+    unschedule()
     refresh()
 }
 
@@ -79,7 +83,7 @@ def refresh()
     updateDisplayedLaunch()
     scheduleUpdate()  
     def refreshSecs = refreshInterval ? refreshInterval * 60 : 120 * 60
-    runIn(refreshSecs, refresh)
+    runIn(refreshSecs, refresh, [overwrite: false])
 }
 
 def setState() {
@@ -112,9 +116,11 @@ def updateDevice(data) {
 }
 
 def scheduleUpdate() {
+    Date now = new Date()
+    
     // update when time to switch to display next launch
     Date updateAtDate = getDateToSwitchFromLastToNextLaunch()   
-    runOnce(updateAtDate, refresh)
+    if (now.before(updateAtDate)) runOnce(updateAtDate, refresh, [overwrite: false])
     
     // update after next launch
     // TO DO: identify best time to refresh
@@ -125,8 +131,29 @@ def scheduleUpdate() {
         use(TimeCategory ) {
            delayAfterLaunch = nextLaunchTime + 3.minutes
         }
-        runOnce(delayAfterLaunch, refresh)
+        runOnce(delayAfterLaunch, refresh, [overwrite: false])
     }
+    
+    // schedule update to occur based on inactivity threshold (after latest laucnh and before next launch)
+    
+    if (state.lastLaunch && hoursInactive) {
+        def lastLaunchTime = new Date(state.lastLaunch.time)
+        Calendar cal = Calendar.getInstance()
+        cal.setTimeZone(location.timeZone)
+        cal.setTime(lastLaunchTime)
+        cal.add(Calendar.HOUR, hoursInactive)
+        Date inactiveDateTime = cal.time
+        if (now.before(inactiveDateTime)) runOnce(inactiveDateTime, refresh, [overwrite: false])
+    }
+    if (state.nextLaunch && hoursInactive) {
+        def nextLaunchTime = new Date(state.nextLaunch.time)
+        Calendar cal = Calendar.getInstance()
+        cal.setTimeZone(location.timeZone)
+        cal.setTime(nextLaunchTime)
+        cal.add(Calendar.HOUR, (hoursInactive * -1 as Integer))
+        Date activeDateTime = cal.time
+        if (now.before(activeDateTime)) runOnce(activeDateTime, refresh, [overwrite: false])
+    }    
 }
 
 def getSwitchValue()  {
@@ -136,19 +163,50 @@ def getSwitchValue()  {
     return switchValue    
 }
 
+def getTileParameters(launch) {
+   def scalableFont = false
+    def margin = "-25%"
+    def imageWidth = "100%"
+    def dashboard = getDashboardType()
+    
+    def numLines = 1
+    if (launch.name) numLines++
+   // if (showRocket) numLines++
+    if (showLocality) numLines++
+    if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") numLines++
+    
+    if (dashboard == "Sharptools") {
+        scalableFont = true
+        margin = "-10%"
+        if (numLines == 2) imageWidth = "90%"
+        else if (numLines == 3) imageWidth = "70%"
+        else if (numLines == 4) imageWidth = "50%"
+    }
+    else {
+        if (numLines == 2) imageWidth = "90%"
+        else if (numLines == 3) imageWidth = "90%"
+        else if (numLines == 4) imageWidth = "70%"
+    }
+
+    def color = ""
+    if (textColor != "#000000") color = "color: $textColor"
+    
+    return [scalableFont: scalableFont, imageWidth: imageWidth, margin: margin, color: color]
+}
+
 def getTile(launch) {
     def tile = "<div style='overflow:auto;'>"
-    def colorStyle = ""
-    if (textColor != "#000000") colorStyle = "color: $textColor"
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
-            tile = "<div style='text-align:center;padding:0px;height:75%;${colorStyle};'>"        
-            tile += "<img src='${launch.patch}' style='width:75%; top:0px;' ></div>"         
-            tile += "<div style='text-align:center;padding-top:-10%'>"
-            if (showName) tile += "<p>${launch.name}</p>"    
-            tile += "<p>${launch.timeStr}</p>"               
-            if (showRocket) tile += "<p>${launch.rocket}</p>" 
-            if (showLocality) tile += "<p>${launch.locality}</p>"
+            def tileParameters = getTileParameters(launch)            
+            tile = "<div style='text-align:center;padding:0px;height:100%;${tileParameters.color};'>"        
+            tile += "<img src='${launch.patch}' style='width:${tileParameters.imageWidth}; top:0px;'>"   
+            tile += "</div>"  
+            tile += "<div style='text-align:center;margin-top:${tileParameters.margin};'>"
+            if (showName) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'><b>${launch.name}</b></p>" 
+            tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.timeStr}</p>"               
+          //  if (showRocket) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.rocket}</p>" 
+            if (showLocality) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.locality}</p>"
             if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<p>${launch.status}</p>" 
             tile += "</div>"  
         }
