@@ -14,6 +14,7 @@
  *
  *  Change History:
  *  v1.1.0  Full feature Beta
+ *  v1.1.1  Improved update around launch time
  */
 
 import java.text.SimpleDateFormat
@@ -81,6 +82,7 @@ def refresh()
 {
     setState()
     updateDisplayedLaunch()
+    unschedule()
     scheduleUpdate()  
     def refreshSecs = refreshInterval ? refreshInterval * 60 : 120 * 60
     runIn(refreshSecs, refresh, [overwrite: false])
@@ -115,12 +117,32 @@ def updateDevice(data) {
     sendEvent(name: "switch", value: data.switchValue)    
 }
 
+def updateLatestLaunchStatus() {
+    if (state.updateAttempts == null) state.updateAttempts = 1
+    else state.updateAttempts++
+        
+    def storedStatus = state.latestLaunch.status
+    setState()
+    if (storedStatus == state.latestLaunch.status && state.updateAttempts <= 12) {
+        // Keep checking for update every 5 minutes until max attempts reached
+        runIn(300, updateLatestLaunchStatus)        
+    }
+    else if (storedStatus != state.latestLaunch.status) {
+        updateDisplayedLaunch()
+        state.updateAttempts = 0
+    }
+    else if (storedStatus == state.latestLaunch.status && state.updateAttempts > 12) {
+        // max update attempts reached. Reset for next time and abort update.
+        state.updateAttempts = 0
+    }
+}
+
 def scheduleUpdate() {
     Date now = new Date()
     
     // update when time to switch to display next launch
     Date updateAtDate = getDateToSwitchFromLastToNextLaunch()   
-    if (now.before(updateAtDate)) runOnce(updateAtDate, refresh, [overwrite: false])
+    if (now.before(updateAtDate)) runOnce(updateAtDate, updateLatestLaunchStatus, [overwrite: false])
     
     // update after next launch
     // TO DO: identify best time to refresh
