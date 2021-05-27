@@ -15,6 +15,7 @@
  *  Change History:
  *  v1.1.0  Full feature Beta
  *  v1.1.1  Improved update around launch time
+ *  v1.1.2  Fixed issue with inactivity timing
  */
 
 import java.text.SimpleDateFormat
@@ -73,6 +74,7 @@ def getDashboardType() {
 
 def configure()
 {
+    logDebug("Configuring Lift Off...")
     state.clear()
     unschedule()
     refresh()
@@ -142,7 +144,7 @@ def scheduleUpdate() {
     
     // update when time to switch to display next launch
     Date updateAtDate = getDateToSwitchFromLastToNextLaunch()   
-    if (now.before(updateAtDate)) runOnce(updateAtDate, updateLatestLaunchStatus, [overwrite: false])
+    if (now.before(updateAtDate)) runOnce(updateAtDate, updateLatestLaunchStatus)
     
     // update after next launch
     // TO DO: identify best time to refresh
@@ -156,14 +158,14 @@ def scheduleUpdate() {
         runOnce(delayAfterLaunch, refresh, [overwrite: false])
     }
     
-    // schedule update to occur based on inactivity threshold (after latest laucnh and before next launch)
+    // schedule update to occur based on inactivity threshold (after latest launch and before next launch)
     
-    if (state.lastLaunch && hoursInactive) {
-        def lastLaunchTime = new Date(state.lastLaunch.time)
+    if (state.latestLaunch && hoursInactive) {
+        def lastLaunchTime = new Date(state.latestLaunch.time)
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.setTime(lastLaunchTime)
-        cal.add(Calendar.HOUR, hoursInactive)
+        cal.add(Calendar.HOUR, hoursInactive as Integer)
         Date inactiveDateTime = cal.time
         if (now.before(inactiveDateTime)) runOnce(inactiveDateTime, refresh, [overwrite: false])
     }
@@ -239,31 +241,38 @@ def getTile(launch) {
 
 Boolean isInactive() {
     def isInactive = false
-    def lastLaunchInactive = false
-    def nextLaunchInactive = false
     Date now = new Date()
-    if (state.lastLaunch && hoursInactive) {
-        def lastLaunchTime = new Date(state.lastLaunch.time)
+    Date inactiveDateTime = null
+    Date activeDateTime = null
+    if (state.latestLaunch != null && hoursInactive != null) {
+        def lastLaunchTime = new Date(state.latestLaunch.time)
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.setTime(lastLaunchTime)
-        cal.add(Calendar.HOUR, hoursInactive)
-        Date inactiveDateTime = cal.time
-        if (now.after(inactiveDateTime)) lastLaunchInactive = true
+        cal.add(Calendar.HOUR, hoursInactive as Integer)
+        inactiveDateTime = cal.time
+        logDebug("Inactivity Post-Launch scheduled to start ${inactiveDateTime}")        
     }
-    if (state.nextLaunch && hoursInactive) {
+    if (state.nextLaunch != null && hoursInactive != null) {
         def nextLaunchTime = new Date(state.nextLaunch.time)
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.setTime(nextLaunchTime)
         cal.add(Calendar.HOUR, (hoursInactive * -1 as Integer))
-        Date activeDateTime = cal.time
-        if (!now.after(activeDateTime)) nextLaunchInactive = true
-    }    
-    if (lastLaunchInactive || nextLaunchInactive) {
-        isInactive = true
-        logDebug("No launch activity within the past ${hoursInactive} hour(s) or within the next ${hoursInactive} hour(s). ${clearWhenInactive ? "Hiding tile." : ""}")
+        activeDateTime = cal.time
+        logDebug("Inactivity Pre-Launch scheduled to stop ${activeDateTime}")
+        
+    }   
+    if (inactiveDateTime != null && activeDateTime != null) {
+        if (now.after(inactiveDateTime) && now.before(activeDateTime)) isInactive = true
     }
+    else if (inactiveDateTime == null && activeDateTime != null) {
+        if (now.before(activeDateTime)) isInactive = true
+    }
+    else if (inactiveDateTime != null && activeDateTime == null) {
+        if (now.after(inactiveDateTime)) isInactive = true
+    }
+    if (isInactive) logDebug("No launch activity within the past ${hoursInactive} hour(s) and within the next ${hoursInactive} hour(s). ${clearWhenInactive ? "Hiding tile." : ""}")
     return isInactive
 }
 
@@ -331,7 +340,7 @@ def getDateToSwitchFromLastToNextLaunch() {
             Calendar cal = Calendar.getInstance()
             cal.setTimeZone(location.timeZone)
             cal.setTime(lastLaunchTime)
-            cal.add(Calendar.MINUTE, switchTime)
+            cal.add(Calendar.MINUTE, switchTime as Integer)
             date = cal.time
         }
     }
