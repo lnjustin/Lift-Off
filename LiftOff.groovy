@@ -16,6 +16,7 @@
  *  v1.1.0  Full feature Beta
  *  v1.1.1  Improved update around launch time
  *  v1.1.2  Fixed issue with inactivity timing
+ *  v1.1.3  Default patch
  */
 
 import java.text.SimpleDateFormat
@@ -220,11 +221,12 @@ def getTileParameters(launch) {
 
 def getTile(launch) {
     def tile = "<div style='overflow:auto;'>"
+    def patch = launch.patch != null ? launch.path : "https://raw.githubusercontent.com/lnjustin/App-Images/master/Lift-Off/spacexLogo.png"
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
             def tileParameters = getTileParameters(launch)            
             tile = "<div style='text-align:center;padding:0px;height:100%;${tileParameters.color};'>"        
-            tile += "<img src='${launch.patch}' style='width:${tileParameters.imageWidth}; top:0px;'>"   
+            tile += "<img src='${patch}' style='width:${tileParameters.imageWidth}; top:0px;'>"   
             tile += "</div>"  
             tile += "<div style='text-align:center;margin-top:${tileParameters.margin};'>"
             if (showName) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'><b>${launch.name}</b></p>" 
