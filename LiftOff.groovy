@@ -221,7 +221,7 @@ def getTileParameters(launch) {
 
 def getTile(launch) {
     def tile = "<div style='overflow:auto;'>"
-    def patch = launch.patch != null ? launch.path : "https://raw.githubusercontent.com/lnjustin/App-Images/master/Lift-Off/spacexLogo.png"
+    def patch = launch.patch != null ? launch.patch : "https://raw.githubusercontent.com/lnjustin/App-Images/master/Lift-Off/spacexLogo.png"
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
             def tileParameters = getTileParameters(launch)            
