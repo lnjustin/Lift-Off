@@ -17,6 +17,7 @@
  *  v1.1.1  Improved update around launch time
  *  v1.1.2  Fixed issue with inactivity timing
  *  v1.1.3  Default patch
+ *  v1.1.4  Fixed success/failure spacing
  */
 
 import java.text.SimpleDateFormat
@@ -233,7 +234,7 @@ def getTile(launch) {
             tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.timeStr}</p>"               
           //  if (showRocket) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.rocket}</p>" 
             if (showLocality) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.locality}</p>"
-            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<p>${launch.status}</p>" 
+            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.status}</p>" 
             tile += "</div>"  
         }
     }
@@ -362,6 +363,17 @@ def isToday(Date date) {
     return isToday
 }
 
+
+def isYesterday(Date date) {
+    def isYesterday = false
+    def today = new Date().clearTime()
+    def yesterday = today - 1
+    def dateCopy = new Date(date.getTime())
+    def dateObj = dateCopy.clearTime()    
+    if (dateObj.equals(yesterday)) isYesterday = true
+    return isYesterday
+}
+
 String getTimeStr(Date launchTime) {
     def nextWeek = new Date() + 7
     def lastWeek = new Date() - 7
@@ -371,6 +383,10 @@ String getTimeStr(Date launchTime) {
     if (launchTime.after(nextWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
     else if (isToday(launchTime)) {
         timeStrPrefix = "Today "
+        dateFormat = new SimpleDateFormat("h:mm a")
+    }
+    else if (isYesterday(launchTime)) {
+        timeStrPrefix = "Yesterday "
         dateFormat = new SimpleDateFormat("h:mm a")
     }
     else if (launchTime.before(lastWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
