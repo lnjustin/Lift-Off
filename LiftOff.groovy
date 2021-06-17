@@ -18,6 +18,7 @@
  *  v1.1.2  Fixed issue with inactivity timing
  *  v1.1.3  Default patch
  *  v1.1.4  Fixed success/failure spacing
+ *  v1.1.5  Fixed success/failure bug
  */
 
 import java.text.SimpleDateFormat
@@ -283,7 +284,12 @@ def setLatestLaunch() {
     def latest = httpGetExec("launches/latest")
     def unixTimestamp = (latest.date_unix as Long) * 1000
     def launchTime = new Date(unixTimestamp)
-    def status = latest.success == true ? "Success" : "Failure"   
+    logDebug("Status of latest launch is: ${latest.success}")
+    def status = "No Data"
+    if (latest.success != null && latest.success != "null") {
+        if (latest.success == true || latest.success == "true") status = "Success"
+        else if (latest.success == false || latest.success == "false") status = "Failure"
+    }
     def locality = getLocality(latest)    
     def rocketName = getRocketName(latest)
     
