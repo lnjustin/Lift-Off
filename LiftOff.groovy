@@ -128,7 +128,7 @@ def updateLatestLaunchStatus() {
         
     def storedStatus = state.latestLaunch.status
     setState()
-    if (storedStatus == state.latestLaunch.status && state.updateAttempts <= 12) {
+    if (storedStatus == state.latestLaunch.status && state.updateAttempts <= 24) {
         // Keep checking for update every 5 minutes until max attempts reached
         runIn(300, updateLatestLaunchStatus)        
     }
@@ -136,7 +136,7 @@ def updateLatestLaunchStatus() {
         updateDisplayedLaunch()
         state.updateAttempts = 0
     }
-    else if (storedStatus == state.latestLaunch.status && state.updateAttempts > 12) {
+    else if (storedStatus == state.latestLaunch.status && state.updateAttempts > 24) {
         // max update attempts reached. Reset for next time and abort update.
         state.updateAttempts = 0
     }
@@ -147,18 +147,25 @@ def scheduleUpdate() {
     
     // update when time to switch to display next launch
     Date updateAtDate = getDateToSwitchFromLastToNextLaunch()   
-    if (now.before(updateAtDate)) runOnce(updateAtDate, updateLatestLaunchStatus)
+    if (now.before(updateAtDate)) runOnce(updateAtDate, updateDisplayedLaunch)
     
     // update after next launch
-    // TO DO: identify best time to refresh
     if (state.nextLaunch) {
         def nextLaunchTime = new Date(state.nextLaunch.time)
         def delayAfterLaunch = null
         // update launch when API likely to have new data
         use(TimeCategory ) {
-           delayAfterLaunch = nextLaunchTime + 3.minutes
+           delayAfterLaunch = nextLaunchTime + 10.minutes
         }
         runOnce(delayAfterLaunch, refresh, [overwrite: false])
+    }
+    if (state.latestLaunch) {
+        def lastLaunchTime = new Date(state.latestLaunch.time)
+        def secsSinceLaunch = getSecondsBetweenDates(now, lastLaunchTime)
+        if ((state.latestLaunch.status == "" || state.latestLaunch.status == null) && secsSinceLaunch < (3600 * 3)) {
+            // schedule another update to occur in 10 minutes if the launch happened within the past 3 hours but the success/failure status has not yet been updated
+            runIn(600, updateLatestLaunchStatus)  
+        }
     }
     
     // schedule update to occur based on inactivity threshold (after latest launch and before next launch)
