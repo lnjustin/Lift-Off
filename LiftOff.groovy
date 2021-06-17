@@ -285,7 +285,7 @@ def setLatestLaunch() {
     def unixTimestamp = (latest.date_unix as Long) * 1000
     def launchTime = new Date(unixTimestamp)
     logDebug("Status of latest launch is: ${latest.success}")
-    def status = "No Data"
+    def status = ""
     if (latest.success != null && latest.success != "null") {
         if (latest.success == true || latest.success == "true") status = "Success"
         else if (latest.success == false || latest.success == "false") status = "Failure"
