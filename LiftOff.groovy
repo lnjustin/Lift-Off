@@ -19,6 +19,7 @@
  *  v1.1.3  Default patch
  *  v1.1.4  Fixed success/failure spacing
  *  v1.1.5  Fixed success/failure bug
+ *  v1.1.6  Fixed handling of partial dates
  */
 
 import java.text.SimpleDateFormat
@@ -42,7 +43,8 @@ metadata
         attribute "location", "string"
         attribute "rocket", "string"
         attribute "description", "string"
-        attribute "status", "string"    
+        attribute "status", "string"   
+        attribute "coreRecovery", "string"   
     }
 }
 
@@ -117,6 +119,7 @@ def updateDevice(data) {
     else description = data.launch.description
     sendEvent(name: "description", value: description)
     sendEvent(name: "status", value: data.launch != null ? data.launch.status : "No Launch Data")
+    sendEvent(name: "coreRecovery", value: data.launch != null ? data.launch.coreRecovery : "No Launch Data")
     
     sendEvent(name: "tile", value: data.tile)
     sendEvent(name: "switch", value: data.switchValue)    
@@ -242,7 +245,15 @@ def getTile(launch) {
             tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.timeStr}</p>"               
           //  if (showRocket) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.rocket}</p>" 
             if (showLocality) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.locality}</p>"
-            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.status}</p>" 
+            if (launch.status != "Scheduled" && launch.status != null && launch.status != "null") {
+                tile += "<div style='text-align:center;margin:0px;'>"
+                if (launch.status == "Launched") tile += successRocketIcon
+                else if (launch.status == "Failed") tile += failureRocketIcon 
+                if (launch.coreRecovery == "Success") tile += successCoreRecoveryIcon
+                else if (launch.coreRecovery == "Failure") tile += failureCoreRecoveryIcon
+                else if (launch.coreRecovery == "Partial Success") tile += partialSuccessCoreRecoveryIcon
+                tile += "</div>"
+            }
             tile += "</div>"  
         }
     }
@@ -264,7 +275,7 @@ Boolean isInactive() {
         inactiveDateTime = cal.time
         logDebug("Inactivity Post-Launch scheduled to start ${inactiveDateTime}")        
     }
-    if (state.nextLaunch != null && hoursInactive != null) {
+    if (state.nextLaunch != null && (state.nextLaunch.timePrecision == 'day' || state.nextLaunch.timePrecision == 'hour') && hoursInactive != null) {
         def nextLaunchTime = new Date(state.nextLaunch.time)
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
@@ -291,26 +302,39 @@ def setLatestLaunch() {
     def latest = httpGetExec("launches/latest")
     def unixTimestamp = (latest.date_unix as Long) * 1000
     def launchTime = new Date(unixTimestamp)
-    logDebug("Status of latest launch is: ${latest.success}")
-    def status = ""
+    def launchStatus = ""
     if (latest.success != null && latest.success != "null") {
-        if (latest.success == true || latest.success == "true") status = "Success"
-        else if (latest.success == false || latest.success == "false") status = "Failure"
+        if (latest.success == true || latest.success == "true") launchStatus = "Launched"
+        else if (latest.success == false || latest.success == "false") launchStatus = "Failed"
+    }
+    def coreRecovery = "Not Applicable"
+    if (latest.cores != null && latest.cores != "null") {
+        def atLeastOneCoreSuccess = null
+        def atLeastOneCoreFailure = null
+        for (core in latest.cores) {
+           if (core.landing_attempt == true && core.landing_success == true) atLeastOneCoreSuccess = true
+           else if (core.landing_attempt == true && core.landing_success == false) atLeastOneCoreFailure = true
+        }
+        if (atLeastOneCoreSuccess == null && atLeastOneCoreFailure == null) coreRecovery = "Recovery Not Attempted" // no landing attempts made, so no status shown
+        else if (atLeastOneCoreSuccess == true && atLeastOneCoreFailure == null) coreRecovery = "Success" // succeeded for all landing attempts
+        else if (atLeastOneCoreSuccess == true && atLeastOneCoreFailure == true) coreRecovery = "Partial Success" // succeeded for only some landing attempts            
+        else if (atLeastOneCoreSuccess == null && atLeastOneCoreFailure == true) coreRecovery = "Failure" // failed for all landing attempts        
     }
     def locality = getLocality(latest)    
     def rocketName = getRocketName(latest)
     
-    state.latestLaunch = [time: launchTime.getTime() , timeStr: getTimeStr(launchTime),  name: latest.name, description: latest.details, locality: locality, rocket: rocketName, patch: latest.links.patch.large, status: status]
+    state.latestLaunch = [time: launchTime.getTime() , timeStr: getTimeStr(launchTime),  name: latest.name, description: latest.details, locality: locality, rocket: rocketName, patch: latest.links.patch.large, status: launchStatus, coreRecovery: coreRecovery]
 }
 
 def setNextLaunch() {
     def next = httpGetExec("launches/next")
     def unixTimestamp = (next.date_unix as Long) * 1000
     def launchTime = new Date(unixTimestamp)    
+    def launchTimePrecision = next.date_precision
     def locality = getLocality(next)    
     def rocketName = getRocketName(next)
     
-    state.nextLaunch = [time: launchTime.getTime(), timeStr: getTimeStr(launchTime),  name: next.name, description: next.details, locality: locality, rocket: rocketName, patch: next.links.patch.large, status: "Scheduled"]    
+    state.nextLaunch = [time: launchTime.getTime(), timeStr: getTimeStr(launchTime, launchTimePrecision), timePrecision: launchTimePrecision, name: next.name, description: next.details, locality: locality, rocket: rocketName, patch: next.links.patch.large, status: "Scheduled", coreRecovery: "Not Applicable"]    
 }
 
 def getLocality(launch) {
@@ -332,8 +356,15 @@ def getLaunchToDisplay() {
     else if (state.latestLaunch != null && state.nextLaunch != null) {
         def now = new Date()        
         Date updateAtDate = getDateToSwitchFromLastToNextLaunch()
-        if (now.after(updateAtDate) || now.equals(updateAtDate)) launch = state.nextLaunch
-        else launch = state.latestLaunch
+        logDebug("Date for switching to next launch is: ${updateAtDate}")
+        if (now.after(updateAtDate) || now.equals(updateAtDate)) {
+            launch = state.nextLaunch
+            logDebug("Displaying next launch.")
+        }
+        else {
+            launch = state.latestLaunch
+            logDebug("Displaying last launch.")
+        }
     }
     return launch
 }
@@ -347,9 +378,10 @@ def getDateToSwitchFromLastToNextLaunch() {
     def nextLaunchTime = new Date(state.nextLaunch.time)
     def now = new Date()
     Date date = null
-    def minsBetweenLaunches = Math.round(getSecondsBetweenDates(lastLaunchTime, nextLaunchTime) / 60)                                        
+    def minsBetweenLaunches = Math.round(getSecondsBetweenDates(lastLaunchTime, nextLaunchTime) / 60)         
     if (minsBetweenLaunches < 1440) {
         // if less than 24 hours between launches, switch to next launch halfway between launches
+        logDebug("Less than 24 hours between launches. Switching to display next launch halfway between launches")
         if (now.after(nextLaunchTime)) date = now // if launch is already scheduled to start, switch now
         else {
             def switchTime = Math.round(getSecondsBetweenDates(now, nextLaunchTime) / 120) as Integer // switch halfway between now and the next launch time
@@ -363,6 +395,7 @@ def getDateToSwitchFromLastToNextLaunch() {
     else {
         // switch to display next launch 1 day after the last launch
         date = lastLaunchTime + 1
+        logDebug("More than 24 hours between launches. Switching to display next launch 24 hours after the last launch.")
     }
     return date   
 }
@@ -387,29 +420,61 @@ def isYesterday(Date date) {
     return isYesterday
 }
 
-String getTimeStr(Date launchTime) {
-    def nextWeek = new Date() + 7
-    def lastWeek = new Date() - 7
-    def now = new Date()
-    def dateFormat = null
-    def timeStrPrefix = ""
-    if (launchTime.after(nextWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
-    else if (isToday(launchTime)) {
-        timeStrPrefix = "Today "
-        dateFormat = new SimpleDateFormat("h:mm a")
+String getTimeStr(Date launchTime, launchTimePrecision = null) {
+    def timeStr = ""
+  
+    if (launchTimePrecision == null || launchTimePrecision == 'hour') {
+        def timeStrPrefix = ""
+        def nextWeek = new Date() + 7
+        def lastWeek = new Date() - 7
+        def now = new Date()
+        def dateFormat = null
+        if (launchTime.after(nextWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
+        else if (isToday(launchTime)) {
+           timeStrPrefix = "Today "
+            dateFormat = new SimpleDateFormat("h:mm a")
+        }
+        else if (isYesterday(launchTime)) {
+            timeStrPrefix = "Yesterday "
+            dateFormat = new SimpleDateFormat("h:mm a")
+        }
+        else if (launchTime.before(lastWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
+        else if (launchTime.before(now)) {
+             timeStrPrefix = "Last "   
+             dateFormat = new SimpleDateFormat("EEE h:mm a")
+        }
+        else dateFormat = new SimpleDateFormat("EEE h:mm a")
+        dateFormat.setTimeZone(location.timeZone)        
+        timeStr = timeStrPrefix + dateFormat.format(launchTime)    
     }
-    else if (isYesterday(launchTime)) {
-        timeStrPrefix = "Yesterday "
-        dateFormat = new SimpleDateFormat("h:mm a")
+    else if (launchTimePrecision == 'day') {
+        def dateFormat = new SimpleDateFormat("EEE")
+        dateFormat.setTimeZone(TimeZone.getTimeZone("UTC")) // Intentionally avoid translating to local time zone
+        timeStr = dateFormat.format(launchTime)   
+        
+        def now = new Date()
+        def today = dateFormat.format(now)
+        if (timeStr == today) timeStr = "Today"
     }
-    else if (launchTime.before(lastWeek)) dateFormat = new SimpleDateFormat("EEE, MMM d h:mm a")
-    else if (launchTime.before(now)) {
-         timeStrPrefix = "This Past "   
-        dateFormat = new SimpleDateFormat("EEE h:mm a")
+    else if (launchTimePrecision == 'month') {
+        def dateFormat = new SimpleDateFormat("MMMMM")
+        dateFormat.setTimeZone(TimeZone.getTimeZone("UTC")) // Intentionally avoid translating to local time zone
+        timeStr = dateFormat.format(launchTime) 
+        
+        def now = new Date()
+        def thisMonth = dateFormat.format(now)
+        if (timeStr == thisMonth) timeStr = "This Month"
     }
-    else dateFormat = new SimpleDateFormat("EEE h:mm a")
-    dateFormat.setTimeZone(location.timeZone)        
-    def timeStr = timeStrPrefix + dateFormat.format(launchTime)    
+    else if (launchTimePrecision == 'year') {
+        def dateFormat = new SimpleDateFormat("yyyy")
+        dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"))  // Intentionally avoid translating to local time zone
+        timeStr = dateFormat.format(launchTime)
+        
+        def now = new Date()
+        def thisYear = dateFormat.format(now)
+        if (timeStr == thisYear) timeStr = "This Year"
+    }
+    // TO DO: handle 'quarter' and 'half' precision values
     return timeStr
 }
 
@@ -455,3 +520,9 @@ def httpGetExec(suffix)
     }
 }
     
+@Field static successRocketIcon = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="19pt" height="19pt" viewBox="0 0 19 19" version="1.1"><g id="surface1"><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 13.207031 12.398438 L 13.207031 9.976562 C 13.207031 4.582031 10.925781 1.320312 9.96875 0.195312 C 9.867188 0.0703125 9.714844 0 9.554688 0 C 9.394531 0 9.246094 0.0703125 9.140625 0.191406 C 8.167969 1.316406 5.839844 4.574219 5.839844 9.976562 L 5.839844 12.398438 L 5.394531 12.699219 C 4.53125 13.28125 4.015625 14.25 4.015625 15.289062 L 4.015625 18.179688 C 4.015625 18.347656 4.109375 18.507812 4.261719 18.589844 C 4.410156 18.667969 4.59375 18.660156 4.738281 18.566406 L 6.1875 17.597656 C 6.597656 17.328125 7.074219 17.183594 7.5625 17.183594 L 8.632812 17.183594 L 8.632812 18.582031 C 8.632812 18.839844 8.839844 19.046875 9.097656 19.046875 L 9.949219 19.046875 C 10.207031 19.046875 10.414062 18.839844 10.414062 18.582031 L 10.414062 17.183594 L 11.480469 17.183594 C 11.972656 17.183594 12.449219 17.324219 12.859375 17.597656 L 14.308594 18.566406 C 14.449219 18.660156 14.632812 18.667969 14.785156 18.589844 C 14.9375 18.507812 15.03125 18.347656 15.03125 18.179688 L 15.03125 15.289062 C 15.03125 14.253906 14.511719 13.28125 13.652344 12.699219 Z M 9.523438 8.605469 C 8.636719 8.605469 7.917969 7.886719 7.917969 7 C 7.917969 6.113281 8.636719 5.398438 9.523438 5.398438 C 10.410156 5.398438 11.128906 6.113281 11.128906 7 C 11.128906 7.886719 10.410156 8.605469 9.523438 8.605469 Z M 9.523438 8.605469 "/></g></svg>'
+@Field static failureRocketIcon = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="19pt" height="19pt" viewBox="0 0 19 19" version="1.1"><g id="surface1"><path style=" stroke:none;fill-rule:nonzero;fill:red;fill-opacity:1;" d="M 13.207031 12.398438 L 13.207031 9.976562 C 13.207031 4.582031 10.925781 1.320312 9.96875 0.195312 C 9.867188 0.0703125 9.714844 0 9.554688 0 C 9.394531 0 9.246094 0.0703125 9.140625 0.191406 C 8.167969 1.316406 5.839844 4.574219 5.839844 9.976562 L 5.839844 12.398438 L 5.394531 12.699219 C 4.53125 13.28125 4.015625 14.25 4.015625 15.289062 L 4.015625 18.179688 C 4.015625 18.347656 4.109375 18.507812 4.261719 18.589844 C 4.410156 18.667969 4.59375 18.660156 4.738281 18.566406 L 6.1875 17.597656 C 6.597656 17.328125 7.074219 17.183594 7.5625 17.183594 L 8.632812 17.183594 L 8.632812 18.582031 C 8.632812 18.839844 8.839844 19.046875 9.097656 19.046875 L 9.949219 19.046875 C 10.207031 19.046875 10.414062 18.839844 10.414062 18.582031 L 10.414062 17.183594 L 11.480469 17.183594 C 11.972656 17.183594 12.449219 17.324219 12.859375 17.597656 L 14.308594 18.566406 C 14.449219 18.660156 14.632812 18.667969 14.785156 18.589844 C 14.9375 18.507812 15.03125 18.347656 15.03125 18.179688 L 15.03125 15.289062 C 15.03125 14.253906 14.511719 13.28125 13.652344 12.699219 Z M 9.523438 8.605469 C 8.636719 8.605469 7.917969 7.886719 7.917969 7 C 7.917969 6.113281 8.636719 5.398438 9.523438 5.398438 C 10.410156 5.398438 11.128906 6.113281 11.128906 7 C 11.128906 7.886719 10.410156 8.605469 9.523438 8.605469 Z M 9.523438 8.605469 "/></g></svg>'
+
+@Field static successCoreRecoveryIcon = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20pt" height="20pt" viewBox="0 0 20 20" version="1.1"><g id="surface1"><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 9.9375 19.738281 C 15.414062 19.738281 19.871094 15.308594 19.871094 9.867188 C 19.871094 4.429688 15.414062 0 9.9375 0 C 4.457031 0 0 4.429688 0 9.867188 C 0 15.308594 4.457031 19.738281 9.9375 19.738281 Z M 9.9375 1.773438 C 14.429688 1.773438 18.085938 5.40625 18.085938 9.867188 C 18.085938 14.332031 14.429688 17.964844 9.9375 17.964844 C 5.441406 17.964844 1.785156 14.332031 1.785156 9.867188 C 1.785156 5.40625 5.441406 1.773438 9.9375 1.773438 Z M 9.9375 1.773438 "/><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 9.933594 15.554688 C 13.226562 15.554688 15.902344 12.894531 15.902344 9.625 C 15.902344 6.355469 13.226562 3.695312 9.933594 3.695312 C 6.644531 3.695312 3.964844 6.355469 3.964844 9.625 C 3.964844 12.894531 6.644531 15.554688 9.933594 15.554688 Z M 9.933594 5.464844 C 12.238281 5.464844 14.117188 7.332031 14.117188 9.625 C 14.117188 11.917969 12.238281 13.78125 9.933594 13.78125 C 7.628906 13.78125 5.75 11.917969 5.75 9.625 C 5.75 7.332031 7.628906 5.464844 9.933594 5.464844 Z M 9.933594 5.464844 "/><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 11.484375 9.582031 C 11.484375 10.433594 10.789062 11.125 9.933594 11.125 C 9.078125 11.125 8.382812 10.433594 8.382812 9.582031 C 8.382812 8.730469 9.078125 8.042969 9.933594 8.042969 C 10.789062 8.042969 11.484375 8.730469 11.484375 9.582031 Z M 11.484375 9.582031 "/></g></svg>'
+@Field static failureCoreRecoveryIcon = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20pt" height="20pt" viewBox="0 0 20 20" version="1.1"><g id="surface1"><path style=" stroke:none;fill-rule:nonzero;fill:red;fill-opacity:1;" d="M 9.9375 19.738281 C 15.414062 19.738281 19.871094 15.308594 19.871094 9.867188 C 19.871094 4.429688 15.414062 0 9.9375 0 C 4.457031 0 0 4.429688 0 9.867188 C 0 15.308594 4.457031 19.738281 9.9375 19.738281 Z M 9.9375 1.773438 C 14.429688 1.773438 18.085938 5.40625 18.085938 9.867188 C 18.085938 14.332031 14.429688 17.964844 9.9375 17.964844 C 5.441406 17.964844 1.785156 14.332031 1.785156 9.867188 C 1.785156 5.40625 5.441406 1.773438 9.9375 1.773438 Z M 9.9375 1.773438 "/><path style=" stroke:none;fill-rule:nonzero;fill:red;fill-opacity:1;" d="M 9.933594 15.554688 C 13.226562 15.554688 15.902344 12.894531 15.902344 9.625 C 15.902344 6.355469 13.226562 3.695312 9.933594 3.695312 C 6.644531 3.695312 3.964844 6.355469 3.964844 9.625 C 3.964844 12.894531 6.644531 15.554688 9.933594 15.554688 Z M 9.933594 5.464844 C 12.238281 5.464844 14.117188 7.332031 14.117188 9.625 C 14.117188 11.917969 12.238281 13.78125 9.933594 13.78125 C 7.628906 13.78125 5.75 11.917969 5.75 9.625 C 5.75 7.332031 7.628906 5.464844 9.933594 5.464844 Z M 9.933594 5.464844 "/><path style=" stroke:none;fill-rule:nonzero;fill:red;fill-opacity:1;" d="M 11.484375 9.582031 C 11.484375 10.433594 10.789062 11.125 9.933594 11.125 C 9.078125 11.125 8.382812 10.433594 8.382812 9.582031 C 8.382812 8.730469 9.078125 8.042969 9.933594 8.042969 C 10.789062 8.042969 11.484375 8.730469 11.484375 9.582031 Z M 11.484375 9.582031 "/></g></svg>'
+@Field static partialSuccessCoreRecoveryIcon = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20pt" height="20pt" viewBox="0 0 20 20" version="1.1"><g id="surface1"><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 9.9375 19.738281 C 15.414062 19.738281 19.871094 15.308594 19.871094 9.867188 C 19.871094 4.429688 15.414062 0 9.9375 0 C 4.457031 0 0 4.429688 0 9.867188 C 0 15.308594 4.457031 19.738281 9.9375 19.738281 Z M 9.9375 1.773438 C 14.429688 1.773438 18.085938 5.40625 18.085938 9.867188 C 18.085938 14.332031 14.429688 17.964844 9.9375 17.964844 C 5.441406 17.964844 1.785156 14.332031 1.785156 9.867188 C 1.785156 5.40625 5.441406 1.773438 9.9375 1.773438 Z M 9.9375 1.773438 "/><path style=" stroke:none;fill-rule:nonzero;fill:red;fill-opacity:1;" d="M 9.933594 15.554688 C 13.226562 15.554688 15.902344 12.894531 15.902344 9.625 C 15.902344 6.355469 13.226562 3.695312 9.933594 3.695312 C 6.644531 3.695312 3.964844 6.355469 3.964844 9.625 C 3.964844 12.894531 6.644531 15.554688 9.933594 15.554688 Z M 9.933594 5.464844 C 12.238281 5.464844 14.117188 7.332031 14.117188 9.625 C 14.117188 11.917969 12.238281 13.78125 9.933594 13.78125 C 7.628906 13.78125 5.75 11.917969 5.75 9.625 C 5.75 7.332031 7.628906 5.464844 9.933594 5.464844 Z M 9.933594 5.464844 "/><path style=" stroke:none;fill-rule:nonzero;fill:green;fill-opacity:1;" d="M 11.484375 9.582031 C 11.484375 10.433594 10.789062 11.125 9.933594 11.125 C 9.078125 11.125 8.382812 10.433594 8.382812 9.582031 C 8.382812 8.730469 9.078125 8.042969 9.933594 8.042969 C 10.789062 8.042969 11.484375 8.730469 11.484375 9.582031 Z M 11.484375 9.582031 "/></g></svg>'
