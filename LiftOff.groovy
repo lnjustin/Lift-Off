@@ -22,6 +22,7 @@ patch
  *  v1.1.5  Fixed success/failure bug
  *  v1.1.6  Fixed handling of partial dates
  *  v2.0.0  Switched to new API after old API deprecated
+ *  v2.0.1  Bug fix
  */
 
 import java.text.SimpleDateFormat
@@ -267,7 +268,7 @@ def getTileParameters(launch) {
 
 def getTile(launch) {
     def tile = "<div style='overflow:auto;'>"
-    def patch = launch.patch != null ? launch.patch : "https://raw.githubusercontent.com/lnjustin/App-Images/master/Lift-Off/spacexLogo.png"
+    def patch = (launch != null && launch.patch != null) ? launch.patch : "https://raw.githubusercontent.com/lnjustin/App-Images/master/Lift-Off/spacexLogo.png"
     if (!clearWhenInactive || (clearWhenInactive && !isInactive())) {
         if (launch != null) {
             def tileParameters = getTileParameters(launch)            
@@ -276,7 +277,7 @@ def getTile(launch) {
             tile += "</div>"  
             tile += "<div style='text-align:center;margin-top:${tileParameters.margin};'>"
             if (showName) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'><b>${launch.name}</b></p>" 
-            tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(2vh, 2vw)' : ''}'>${launch.timeStr}</p>"               
+            tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(9vh, 9vw)' : ''}'>${launch.timeStr}</p>"               
           //  if (showRocket) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.rocket}</p>" 
             if (showLocality) tile += "<p style='margin:0px;${tileParameters.scalableFont == true ? 'font-size: min(10vh, 10vw)' : ''}'>${launch.locality}</p>"
             if (launch.status != null && launch.status != "null" && (launch.status.contains("Success") || launch.status.contains("Failure"))) {
