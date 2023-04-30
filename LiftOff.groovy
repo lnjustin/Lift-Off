@@ -23,6 +23,7 @@ patch
  *  v1.1.6  Fixed handling of partial dates
  *  v2.0.0  Switched to new API after old API deprecated
  *  v2.0.1  Bug fix
+ *  v2.0.2  Added buttom support
  */
 
 import java.text.SimpleDateFormat
@@ -37,6 +38,7 @@ metadata
         capability "Refresh"        
         capability "Actuator"
         capability "Switch"
+        capability "PushableButton"
         
         attribute "tile", "string" 
         
@@ -64,6 +66,7 @@ preferences
       //  input name: "showRocket", type: "bool", title: "Show Rocket Name on Tile?", defaultValue: false
         input name: "dashboardType", type: "enum", options: ["Native Hubitat", "Sharptools"], title: "Dashboard Type for Which to Configure Tile", defaultValue: "Native Hubitat"
         input name: "textColor", type: "text", title: "Tile Text Color (Hex)", defaultValue: "#000000"
+        input name: "minsBeforeLaunchToNotify", type: "number", title: "Minutes before liftoff to push button", defaultValue: 30
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
     }
 }
@@ -96,6 +99,18 @@ def refresh()
     scheduleUpdate()  
     def refreshSecs = refreshInterval ? refreshInterval * 60 : 120 * 60
     runIn(refreshSecs, refresh, [overwrite: false])
+}
+
+def pushButton(buttonNum) {
+    sendEvent(name: "pushed", value: buttonNum, isStateChange: true)
+}
+
+def push(buttonNum) {
+    sendEvent(name: "pushed", value: buttonNum, isStateChange: true)
+}
+
+def handleLaunchNotification() {
+    push(1)    
 }
 
 def setState() {
@@ -190,12 +205,21 @@ def scheduleUpdate() {
     // update after next launch
     if (state.nextLaunch) {
         def nextLaunchTime = new Date(state.nextLaunch.time)
+        
+        // schedule update after launch
         def delayAfterLaunch = null
         // update launch when API likely to have new data
         use(TimeCategory ) {
            delayAfterLaunch = nextLaunchTime + 10.minutes
         }
         runOnce(delayAfterLaunch, refresh, [overwrite: false])
+        
+        // schedule button press for launch notification
+        unschedule(handleLaunchNotification)
+        Integer notifyOffset = -1 * (minsBeforeLaunchToNotify != null ? minsBeforeLaunchToNotify*60 : 1800)
+        Date notifyTime = adjustDateBySecs(nextLaunchTime, notifyOffset)
+        runOnce(notifyTime, handleLaunchNotification)
+
     }
     if (state.latestLaunch) {
         def lastLaunchTime = new Date(state.latestLaunch.time)
@@ -438,6 +462,15 @@ def getSecondsBetweenDates(Date startDate, Date endDate) {
         log.error "getSecondsBetweenDates Exception: ${ex}"
         return 1000
     }
+}
+
+def adjustDateBySecs(Date date, Integer secs) {
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    cal.setTime(date)
+    cal.add(Calendar.SECOND, secs)
+    Date newDate = cal.getTime()
+    return newDate
 }
 
 def updated()
