@@ -1,9 +1,9 @@
 {
   "packageName": "Lift Off",
   "author": "Justin Leonard",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "minimumHEVersion": "1.1.5",
-  "dateReleased": "2023-03-23",
+  "dateReleased": "2023-04-30",
   "drivers": [
     {
       "id": "6dfdf6da-8ae6-4b3b-b80f-63e6d201eee7",
